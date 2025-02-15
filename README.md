@@ -15,13 +15,12 @@ A simple yet powerful solution for chatting with Arabic documents using fully lo
 ---
 
 ## Repo Structure
-arabic-local-gpt/
-├── requirements.txt # Python dependencies
-├── ingest.py # Script to process and embed documents
-├── chat.py # Chat interface to interact with documents
-├── models/ # Directory for storing models (optional)
-└── documents/ # Place your Arabic documents here
-
+arabic-local-llm-chat/  
+├── requirements.txt   
+├── ingest.py   
+├── chat.py   
+├── models/  
+└── documents/  
 
 ---
 
