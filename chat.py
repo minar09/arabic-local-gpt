@@ -1,22 +1,19 @@
-from langchain.llms import HuggingFacePipeline
+from langchain_huggingface import HuggingFacePipeline, HuggingFaceEmbeddings
 from langchain.chains import RetrievalQA
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import torch
 
 
 def load_model():
-    # Arabic-optimized model (choose one)
-    model_name = "ziad-14b/aragpt2-14b"  # or "aubmindlab/aragpt2-base"
-
+    # Arabic-optimized model
+    model_name = "aubmindlab/aragpt2-base"  # Smaller, faster Arabic GPT-2 model
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.float16,
         device_map="auto"
     )
-
     pipe = pipeline(
         "text-generation",
         model=model,
@@ -25,15 +22,21 @@ def load_model():
         temperature=0.3,
         repetition_penalty=1.1
     )
-
     return HuggingFacePipeline(pipeline=pipe)
 
 
 def main():
     # Load components
     llm = load_model()
-    embeddings = HuggingFaceEmbeddings("aubmindlab/bert-base-arabertv02")
-    vectorstore = FAISS.load_local("faiss_index", embeddings)
+
+    # Initialize embeddings with keyword arguments
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        model_kwargs={'device': 'cpu'}
+    )
+
+    # Load FAISS vector store (with deserialization enabled)
+    vectorstore = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
 
     # Create QA chain
     qa_chain = RetrievalQA.from_chain_type(
@@ -48,7 +51,9 @@ def main():
         query = input("\nالسؤال: ")
         if query.lower() == "خروج":
             break
-        result = qa_chain({"query": query})
+
+        # Use .invoke() instead of __call__
+        result = qa_chain.invoke({"query": query})
         print(f"\nالجواب: {result['result']}")
         print("\nالمصادر:")
         for doc in result['source_documents']:
