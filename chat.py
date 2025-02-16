@@ -1,18 +1,22 @@
 from langchain_huggingface import HuggingFacePipeline, HuggingFaceEmbeddings
-from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import FAISS
+from langchain.retrievers import BM25Retriever, EnsembleRetriever
+from langchain_huggingface import HuggingFacePipeline
+from langchain.chains import RetrievalQA
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import torch
+import gradio as gr
+import pickle
 
 
 def load_model():
-    # Arabic-optimized model
-    model_name = "aubmindlab/aragpt2-base"  # Smaller, faster Arabic GPT-2 model
+    model_name = "aubmindlab/aragpt2-base"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.float16,
-        device_map="auto"
+        device_map="auto",
+        # load_in_4bit=True  # Add 4-bit quantization for gpu
     )
     pipe = pipeline(
         "text-generation",
@@ -25,40 +29,47 @@ def load_model():
     return HuggingFacePipeline(pipeline=pipe)
 
 
-def main():
-    # Load components
+def create_qa_chain():
     llm = load_model()
-
-    # Initialize embeddings with keyword arguments
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         model_kwargs={'device': 'cpu'}
     )
 
-    # Load FAISS vector store (with deserialization enabled)
+    # Load FAISS
     vectorstore = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
 
-    # Create QA chain
-    qa_chain = RetrievalQA.from_chain_type(
+    # Load BM25 retriever
+    with open("bm25_retriever.pkl", "rb") as f:
+        bm25_retriever = pickle.load(f)
+
+    # Create ensemble retriever
+    ensemble_retriever = EnsembleRetriever(
+        retrievers=[bm25_retriever, vectorstore.as_retriever()],
+        weights=[0.4, 0.6]
+    )
+
+    return RetrievalQA.from_chain_type(
         llm=llm,
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
+        retriever=ensemble_retriever,
         return_source_documents=True
     )
 
-    # Arabic chat interface
-    print("مرحبا! أسألني أي سؤال عن مستنداتك. اكتب 'خروج' للإنهاء")
-    while True:
-        query = input("\nالسؤال: ")
-        if query.lower() == "خروج":
-            break
 
-        # Use .invoke() instead of __call__
-        result = qa_chain.invoke({"query": query})
-        print(f"\nالجواب: {result['result']}")
-        print("\nالمصادر:")
-        for doc in result['source_documents']:
-            print(f"- {doc.metadata['source']}")
+def gradio_interface(query, history):
+    qa_chain = create_qa_chain()
+    result = qa_chain.invoke({"query": query})
+
+    sources = "\n".join([f"- {doc.metadata['source']}" for doc in result['source_documents']])
+    return f"{result['result']}\n\nالمصادر:\n{sources}"
 
 
 if __name__ == "__main__":
-    main()
+    # Launch Gradio UI
+    gr.ChatInterface(
+        gradio_interface,
+        title="محادثة مع المستندات العربية",
+        description="اسأل أي سؤال عن مستنداتك العربية المحلية",
+        examples=["ما هو الموضوع الرئيسي؟", "لخص المحتوى"],
+        css="footer {visibility: hidden}"
+    ).launch(server_name="0.0.0.0", share=False)

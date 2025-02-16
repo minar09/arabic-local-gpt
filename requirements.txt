@@ -1,4 +1,4 @@
-langchain>=0.1.0
+langchain>=0.1.15
 langchain-community
 langchain-huggingface
 sentence-transformers>=2.2.2
@@ -8,5 +8,8 @@ transformers>=4.36.2
 torch>=2.1.1
 python-dotenv>=1.0.0
 accelerate>=0.25.0
-unstructured[pdf]
 python-magic-bin
+gradio>=4.13.0
+unstructured[pdf,docx]>=0.12.0
+python-magic>=0.4.27
+rank_bm25>=0.2.2
